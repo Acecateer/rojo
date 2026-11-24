@@ -536,7 +536,7 @@ pub fn syncback_project<'sync>(
 
 /// Syncs properties from the new instance into the project node.
 /// Returns `true` if any stale properties were removed (i.e. properties
-/// that existed in the project node but are now at their engine default).
+/// that existed in the project node but the instance no longer has).
 fn project_node_property_syncback(
     _snapshot: &SyncbackSnapshot,
     filtered_properties: UstrMap<&Variant>,
@@ -569,35 +569,48 @@ fn project_node_property_syncback(
         }
     }
 
-    // Remove stale properties: entries that exist in the project node's
-    // $properties but are no longer in the filtered (non-default) properties
-    // from the instance. This handles the case where Studio resets a property
-    // to its engine default — filter_properties won't include it, so we need
-    // to clean up the now-stale project entry.
+    // Properties the project node already names but that are now at their
+    // reflection-database default (so filter_properties skipped them) keep
+    // their key and take the instance's value. Dropping the key instead would
+    // make `rojo build` omit the property, and Roblox then loads its own
+    // fallback, which does not always match the database default (e.g.
+    // Lighting.PrioritizeLightingQuality loads as true, database says false).
     let class_data = rbx_reflection_database::get()
         .ok()
         .and_then(|db| db.classes.get(new_inst.class.as_str()));
     let len_before = properties.len();
-    properties.retain(|prop_name, _| {
+    properties.retain(|prop_name, node_value| {
         if filtered_properties.contains_key(prop_name) {
             return true;
         }
-        // Only remove if the property has a known default value in the
-        // reflection database. If there's no default, the property might be
-        // absent from the instance for other reasons (e.g. unknown property),
-        // so we conservatively keep it.
-        if let Some(data) = &class_data {
-            if data.default_properties.contains_key(prop_name.as_str()) {
+        let Some(data) = &class_data else {
+            return true;
+        };
+        if !data.default_properties.contains_key(prop_name.as_str()) {
+            return true;
+        }
+        match new_inst.properties.get(prop_name) {
+            Some(inst_value) => {
                 log::debug!(
-                    "Removing stale property '{}' from project node for class '{}': \
-                     value has been reset to engine default",
+                    "Keeping property '{}' on project node for class '{}' \
+                     at its default value",
                     prop_name,
                     new_inst.class
                 );
-                return false;
+                *node_value =
+                    UnresolvedValue::from_variant(inst_value.clone(), &new_inst.class, prop_name);
+                true
+            }
+            None => {
+                log::debug!(
+                    "Removing stale property '{}' from project node for class '{}': \
+                     the instance no longer has it",
+                    prop_name,
+                    new_inst.class
+                );
+                false
             }
         }
-        true
     });
     let removed_stale = properties.len() < len_before;
 

@@ -86,7 +86,8 @@ syncback_tests! {
     sync_rules => ["src/module.modulescript", "src/text.text"],
     // Ensures that the `syncUnscriptable` setting works
     unscriptable_properties => ["default.project.json"],
-    // Ensures that syncback correctly removes default values from projects rather
-    // than leaving an incorrect value.
+    // Ensures that syncback overwrites a project property reset to its default
+    // with the default value rather than leaving an incorrect value or dropping
+    // the key (a dropped key builds as whatever Roblox loads for a missing one).
     project_default_properties_remove => ["default.project.json"],
 }

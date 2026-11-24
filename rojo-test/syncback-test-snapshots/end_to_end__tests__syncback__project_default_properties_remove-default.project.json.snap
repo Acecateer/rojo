@@ -18,7 +18,8 @@ expression: default.project.json
               0,
               255
             ]
-          }
+          },
+          "Transparency": 0.0
         }
       },
       "$properties": {
